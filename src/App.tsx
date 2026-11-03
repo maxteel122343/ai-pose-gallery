@@ -1,56 +1,73 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
-  ANGLES,
   GalleryEntry,
   PAGE_SIZE,
   PoseGroup,
   PoseItem,
+  StandardBoneName,
   ViewMode,
+  ModelSkeletonInfo,
 } from './types';
 import { Header } from './components/Header';
-import { Controls } from './components/Controls';
-import { PoseCard } from './components/PoseCard';
-import { SingleCard } from './components/SingleCard';
-import { ViewerModal } from './components/ViewerModal';
+import { Viewport3D } from './components/Viewport3D';
+import { PoseLibraryPanel } from './components/PoseLibraryPanel';
+import { BoneControlPanel } from './components/BoneControlPanel';
+import { PoseComparisonCard } from './components/PoseComparisonCard';
 import { InfoDialog, InfoType } from './components/InfoDialog';
-import { Footer } from './components/Footer';
+import { SkeletonRig, resetRigToRestPose } from './utils/boneMapping';
+import {
+  analyzePoseImage,
+  computeTargetPoseRotations,
+  applyPoseToRig,
+  getPoseHeightFactor,
+} from './utils/poseRetargeting';
 
 function groupKey(item: PoseItem): string {
   return `${item.system}|${item.number || item.id}`;
 }
 
 export const App: React.FC = () => {
+  // Pose data
   const [data, setData] = useState<PoseItem[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loadingPoses, setLoadingPoses] = useState<boolean>(true);
 
-  // Filters state
+  // Filter state
   const [selectedLine, setSelectedLine] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [selectedAngle, setSelectedAngle] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [viewMode, setViewMode] = useState<ViewMode>('pose');
-  const [shownCount, setShownCount] = useState<number>(PAGE_SIZE.pose);
 
-  // Dialogs and Viewer
+  // Active pose selection
+  const [selectedPoseItem, setSelectedPoseItem] = useState<PoseItem | null>(null);
+  const [selectedPoseGroup, setSelectedPoseGroup] = useState<PoseGroup | null>(null);
+  const [isApplyingPose, setIsApplyingPose] = useState<boolean>(false);
+
+  // 3D Model & Rig
+  const [currentRig, setCurrentRig] = useState<SkeletonRig | null>(null);
+  const [modelInfo, setModelInfo] = useState<ModelSkeletonInfo | null>(null);
+  const [selectedBoneName, setSelectedBoneName] = useState<StandardBoneName | null>('Head');
+
+  // Viewport mode options
+  const [showSkeletonHelper, setShowSkeletonHelper] = useState<boolean>(false);
+  const [showWireframe, setShowWireframe] = useState<boolean>(false);
+  const [showGrid, setShowGrid] = useState<boolean>(true);
+  const [useGizmo, setUseGizmo] = useState<boolean>(true);
+
+  // Layout toggles
+  const [isLibraryCollapsed, setIsLibraryCollapsed] = useState<boolean>(false);
   const [infoModal, setInfoModal] = useState<InfoType | null>(null);
-  const [isViewerOpen, setIsViewerOpen] = useState<boolean>(false);
-  const [viewerIndex, setViewerIndex] = useState<number>(0);
-  const [viewerItem, setViewerItem] = useState<PoseItem | null>(null);
 
-  // Theme state
+  // Theme
   const [theme, setTheme] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('theme');
       if (stored) return stored;
       return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     }
-    return 'light';
+    return 'dark'; // Dark theme default looks best for 3D studio environments
   });
 
-  const searchInputRef = useRef<HTMLInputElement>(null);
-
-  // Sync theme
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem('theme', theme);
@@ -60,26 +77,24 @@ export const App: React.FC = () => {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
   };
 
-  // Fetch initial pose data
+  // Load pose database
   useEffect(() => {
-    setLoading(true);
+    setLoadingPoses(true);
     fetch('/data/pose-en.json')
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
       })
       .then((items: PoseItem[]) => {
-        // Pre-compute search string
         items.forEach((item) => {
           item._search = `${item.name} ${item.id} ${item.category} ${item.number}`.toLowerCase();
         });
         setData(items);
-        setLoading(false);
+        setLoadingPoses(false);
       })
       .catch((err) => {
-        console.error('Failed to load pose-en.json', err);
-        setError('Could not load pose data. Ensure data/pose-en.json is accessible.');
-        setLoading(false);
+        console.error('Failed to load pose database', err);
+        setLoadingPoses(false);
       });
   }, []);
 
@@ -116,23 +131,29 @@ export const App: React.FC = () => {
       }
     });
 
-    grps.sort(
-      (a, b) =>
-        lines.indexOf(a.system) - lines.indexOf(b.system) ||
-        String(a.number).localeCompare(String(b.number))
-    );
-
     grps.forEach((group) => {
-      group.order = ANGLES.map((angle) => group.angles[angle]).filter(Boolean);
+      group.order = ['Front', 'High angle', 'Low angle', 'Side', 'Diagonal']
+        .map((ang) => group.angles[ang])
+        .filter(Boolean);
       group.items.forEach((item) => {
         if (!group.order.includes(item)) group.order.push(item);
       });
     });
 
     return { groups: grps, groupMap: map };
-  }, [data, lines]);
+  }, [data]);
 
-  // Compute available categories for currently selected line
+  // Initial pose selection when groups load
+  useEffect(() => {
+    if (groups.length > 0 && !selectedPoseItem) {
+      const firstGroup = groups[0];
+      const firstItem = firstGroup.order[0] || firstGroup.items[0];
+      setSelectedPoseGroup(firstGroup);
+      setSelectedPoseItem(firstItem);
+    }
+  }, [groups, selectedPoseItem]);
+
+  // Compute available categories
   const categories = useMemo(() => {
     const set = new Set<string>();
     data.forEach((item) => {
@@ -143,65 +164,7 @@ export const App: React.FC = () => {
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'en-US'));
   }, [data, selectedLine]);
 
-  // Handle line change
-  const handleSelectLine = (line: string) => {
-    setSelectedLine(line);
-    setSelectedCategory('');
-    setShownCount(PAGE_SIZE[viewMode]);
-  };
-
-  // Handle category change
-  const handleSelectCategory = (cat: string) => {
-    setSelectedCategory(cat);
-    setShownCount(PAGE_SIZE[viewMode]);
-  };
-
-  // Handle angle change
-  const handleSelectAngle = (ang: string) => {
-    setSelectedAngle(ang);
-    setShownCount(PAGE_SIZE[viewMode]);
-  };
-
-  // Handle view switch
-  const handleSelectViewMode = (mode: ViewMode) => {
-    setViewMode(mode);
-    setShownCount(PAGE_SIZE[mode]);
-  };
-
-  // Handle search query
-  const handleSearchChange = (query: string) => {
-    setSearchQuery(query);
-    setShownCount(PAGE_SIZE[viewMode]);
-  };
-
-  // Reset all filters
-  const handleResetAll = () => {
-    setSelectedLine('');
-    setSelectedCategory('');
-    setSelectedAngle('');
-    setSearchQuery('');
-    setViewMode('pose');
-    setShownCount(PAGE_SIZE.pose);
-  };
-
-  // Clear single filter chip
-  const handleClearFilter = (key: string) => {
-    if (key === 'line') {
-      setSelectedLine('');
-      setSelectedCategory('');
-    } else if (key === 'category') {
-      setSelectedCategory('');
-    } else if (key === 'angle') {
-      setSelectedAngle('');
-    } else if (key === 'query') {
-      setSearchQuery('');
-    } else if (key === 'view') {
-      setViewMode('pose');
-    }
-    setShownCount(PAGE_SIZE[viewMode]);
-  };
-
-  // Filter criteria checker
+  // Filtering criteria
   const hit = useCallback(
     (item: PoseItem) => {
       const q = searchQuery.trim().toLowerCase();
@@ -215,7 +178,7 @@ export const App: React.FC = () => {
     [selectedLine, selectedCategory, selectedAngle, searchQuery]
   );
 
-  // Compute matched list
+  // Compute current filtered list
   const currentList: GalleryEntry[] = useMemo(() => {
     if (!data.length) return [];
     if (viewMode === 'single') {
@@ -235,53 +198,68 @@ export const App: React.FC = () => {
       }));
   }, [data, groups, groupMap, viewMode, hit, selectedAngle]);
 
-  const visibleList = useMemo(() => {
-    return currentList.slice(0, shownCount);
-  }, [currentList, shownCount]);
+  // When rig is ready from 3D Viewport
+  const handleRigReady = useCallback((rig: SkeletonRig) => {
+    setCurrentRig(rig);
+    setModelInfo(rig.info);
+  }, []);
 
-  const totalMatches = currentList.length;
-  const totalImagesMatched = useMemo(() => {
-    if (viewMode === 'single') return totalMatches;
-    return currentList.reduce((sum, entry) => sum + entry.matched, 0);
-  }, [currentList, viewMode, totalMatches]);
-
-  // Open Viewer
-  const handleOpenViewer = (index: number, item: PoseItem) => {
-    setViewerIndex(index);
-    setViewerItem(item);
-    setIsViewerOpen(true);
-  };
-
-  const handleCloseViewer = () => {
-    setIsViewerOpen(false);
-  };
-
-  const handleChangeViewerItem = (newIndex: number, newItem: PoseItem) => {
-    setViewerIndex(newIndex);
-    setViewerItem(newItem);
-  };
-
-  // Global keydown for '/' shortcut to search
-  useEffect(() => {
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (isViewerOpen || infoModal !== null) return;
-      if (
-        e.key === '/' &&
-        !['INPUT', 'TEXTAREA', 'SELECT'].includes(
-          (document.activeElement?.tagName || '').toUpperCase()
-        )
-      ) {
-        e.preventDefault();
-        searchInputRef.current?.focus();
+  // Apply pose to 3D Model
+  const handleApplyPose = useCallback(
+    async (item: PoseItem) => {
+      if (!currentRig) return;
+      if (!currentRig.info.hasSkeleton) {
+        alert(
+          'Aviso: O modelo 3D atual não possui esqueleto (bones/armature). Não é possível aplicar poses neste modelo.'
+        );
+        return;
       }
-    };
 
-    window.addEventListener('keydown', handleGlobalKeyDown);
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [isViewerOpen, infoModal]);
+      setIsApplyingPose(true);
+
+      try {
+        // Run vision feature analysis on the 2D image
+        const visionFeatures = await analyzePoseImage(item.thumb);
+        // Calculate target bone rotations and hip height factor
+        const targetRotations = computeTargetPoseRotations(item, visionFeatures);
+        const heightFactor = getPoseHeightFactor(item);
+        // Smoothly retarget to skeleton
+        applyPoseToRig(
+          currentRig,
+          targetRotations,
+          () => {
+            setIsApplyingPose(false);
+          },
+          heightFactor
+        );
+      } catch (err) {
+        console.error('Failed to apply pose', err);
+        setIsApplyingPose(false);
+      }
+    },
+    [currentRig]
+  );
+
+  // Reset model pose
+  const handleResetPose = useCallback(() => {
+    if (!currentRig) return;
+    resetRigToRestPose(currentRig);
+  }, [currentRig]);
+
+  // Select pose from gallery
+  const handleSelectPose = (item: PoseItem, group: PoseGroup) => {
+    setSelectedPoseItem(item);
+    setSelectedPoseGroup(group);
+  };
+
+  // Direct 1-click apply from gallery card
+  const handleApplyPoseDirectly = (item: PoseItem) => {
+    handleApplyPose(item);
+  };
 
   return (
-    <>
+    <div className="app-layout">
+      {/* App Header */}
       <Header
         poseCount={groups.length}
         imageCount={data.length}
@@ -290,154 +268,84 @@ export const App: React.FC = () => {
         onToggleTheme={toggleTheme}
       />
 
-      <Controls
-        lines={lines}
-        data={data}
-        groups={groups}
-        selectedLine={selectedLine}
-        onSelectLine={handleSelectLine}
-        categories={categories}
-        selectedCategory={selectedCategory}
-        onSelectCategory={handleSelectCategory}
-        selectedAngle={selectedAngle}
-        onSelectAngle={handleSelectAngle}
-        viewMode={viewMode}
-        onSelectViewMode={handleSelectViewMode}
-        searchQuery={searchQuery}
-        onSearchChange={handleSearchChange}
-        onResetAll={handleResetAll}
-        searchInputRef={searchInputRef}
-        onClearFilter={handleClearFilter}
-      />
+      {/* Main 3D Studio Workspace */}
+      <div className="studio-workspace">
+        {/* Left: Pose Library */}
+        <PoseLibraryPanel
+          data={data}
+          groups={groups}
+          lines={lines}
+          selectedLine={selectedLine}
+          onSelectLine={setSelectedLine}
+          categories={categories}
+          selectedCategory={selectedCategory}
+          onSelectCategory={setSelectedCategory}
+          selectedAngle={selectedAngle}
+          onSelectAngle={setSelectedAngle}
+          viewMode={viewMode}
+          onSelectViewMode={setViewMode}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          currentList={currentList}
+          selectedPoseItem={selectedPoseItem}
+          onSelectPose={handleSelectPose}
+          onApplyPoseDirectly={handleApplyPoseDirectly}
+          isCollapsed={isLibraryCollapsed}
+          onToggleCollapse={() => setIsLibraryCollapsed(!isLibraryCollapsed)}
+        />
 
-      <main className="shell">
-        <h2 className="sr-only">Pose gallery</h2>
+        {/* Center: 3D Viewport with Comparison Card Overlay */}
+        <div className="studio-viewport-area">
+          <Viewport3D
+            onRigReady={handleRigReady}
+            selectedBoneName={selectedBoneName}
+            onSelectBone={setSelectedBoneName}
+            showSkeletonHelper={showSkeletonHelper}
+            onToggleSkeletonHelper={() => setShowSkeletonHelper(!showSkeletonHelper)}
+            showWireframe={showWireframe}
+            onToggleWireframe={() => setShowWireframe(!showWireframe)}
+            showGrid={showGrid}
+            onToggleGrid={() => setShowGrid(!showGrid)}
+            useGizmo={useGizmo}
+            onToggleGizmo={() => setUseGizmo(!useGizmo)}
+          />
 
-        <div className="result-head">
-          <div className="result-summary">
-            <strong>
-              {loading
-                ? 'Loading gallery…'
-                : viewMode === 'pose'
-                ? `${totalMatches.toLocaleString('en-US')} poses · ${totalImagesMatched.toLocaleString('en-US')} images`
-                : `${totalMatches.toLocaleString('en-US')} images`}
-            </strong>
-            {!loading && (
-              <span>
-                {totalMatches > shownCount
-                  ? `Showing ${visibleList.length.toLocaleString('en-US')} / ${totalMatches.toLocaleString('en-US')}`
-                  : `${totalMatches.toLocaleString('en-US')} total`}
-              </span>
-            )}
-          </div>
-          <div className="result-hint">
-            <svg
-              width="15"
-              height="15"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.7"
-              strokeLinecap="round"
-            >
-              <path d="M8 3H3v5m13-5h5v5M8 21H3v-5m13 5h5v-5" />
-              <circle cx="12" cy="12" r="3" />
-            </svg>
-            Hover thumbnails to switch angle · click to view full size
-          </div>
-        </div>
-
-        <div className="grid" aria-live="polite">
-          {loading ? (
-            Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="pose-card skeleton">
-                <div className="card-image" />
-                <div className="skeleton-line" />
-                <div className="skeleton-line short" />
-              </div>
-            ))
-          ) : error ? (
-            <div className="empty">
-              <h3>Could not load pose data</h3>
-              <p>{error}</p>
-              <button type="button" onClick={() => window.location.reload()}>
-                Reload
-              </button>
-            </div>
-          ) : totalMatches === 0 ? (
-            <div className="empty">
-              <div className="empty-icon">
-                <svg
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                >
-                  <circle cx="10.8" cy="10.8" r="6.8" />
-                  <path d="m20 20-4.2-4.2" />
-                </svg>
-              </div>
-              <h3>No matching poses</h3>
-              <p>Try a different keyword or fewer filters.</p>
-              <button type="button" onClick={handleResetAll}>
-                Clear all filters
-              </button>
-            </div>
-          ) : (
-            visibleList.map((entry, idx) =>
-              viewMode === 'pose' ? (
-                <PoseCard
-                  key={entry.group.key}
-                  entry={entry}
-                  index={idx}
-                  onOpenViewer={handleOpenViewer}
-                />
-              ) : (
-                <SingleCard
-                  key={entry.item.id}
-                  entry={entry}
-                  index={idx}
-                  onOpenViewer={handleOpenViewer}
-                />
-              )
-            )
+          {/* Reference Image Comparison Card */}
+          {selectedPoseItem && selectedPoseGroup && (
+            <PoseComparisonCard
+              currentPoseItem={selectedPoseItem}
+              currentPoseGroup={selectedPoseGroup}
+              onSelectAngleItem={(item) => setSelectedPoseItem(item)}
+              onApplyPose={handleApplyPose}
+              isApplying={isApplyingPose}
+              onClose={() => {
+                setSelectedPoseItem(null);
+                setSelectedPoseGroup(null);
+              }}
+            />
           )}
         </div>
 
-        {!loading && totalMatches > shownCount && (
-          <button
-            className="load-more"
-            type="button"
-            onClick={() =>
-              setShownCount((prev) =>
-                Math.min(prev + PAGE_SIZE[viewMode], totalMatches)
-              )
-            }
-          >
-            Load more ({(totalMatches - shownCount).toLocaleString('en-US')}{' '}
-            {viewMode === 'pose' ? 'poses' : 'images'} left)
-          </button>
-        )}
-      </main>
-
-      <Footer />
-
-      {viewerItem && (
-        <ViewerModal
-          isOpen={isViewerOpen}
-          onClose={handleCloseViewer}
-          currentIndex={viewerIndex}
-          currentItem={viewerItem}
-          currentList={currentList}
-          onChangeItem={handleChangeViewerItem}
+        {/* Right: Bone Controls & Inspector */}
+        <BoneControlPanel
+          rig={currentRig}
+          modelInfo={modelInfo}
+          selectedBoneName={selectedBoneName}
+          onSelectBone={setSelectedBoneName}
+          showSkeletonHelper={showSkeletonHelper}
+          onToggleSkeletonHelper={() => setShowSkeletonHelper(!showSkeletonHelper)}
+          showWireframe={showWireframe}
+          onToggleWireframe={() => setShowWireframe(!showWireframe)}
+          showGrid={showGrid}
+          onToggleGrid={() => setShowGrid(!showGrid)}
+          useGizmo={useGizmo}
+          onToggleGizmo={() => setUseGizmo(!useGizmo)}
+          onResetPose={handleResetPose}
         />
-      )}
+      </div>
 
       <InfoDialog type={infoModal} onClose={() => setInfoModal(null)} />
-    </>
+    </div>
   );
 };
 

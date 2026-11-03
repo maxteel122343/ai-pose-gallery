@@ -35,3 +35,51 @@ export const PAGE_SIZE: Record<ViewMode, number> = {
   pose: 60,
   single: 96,
 };
+
+// Standard humanoid bone taxonomy
+export type StandardBoneName =
+  | 'Hips'
+  | 'Spine'
+  | 'Chest'
+  | 'Neck'
+  | 'Head'
+  | 'LeftShoulder'
+  | 'LeftArm'
+  | 'LeftForeArm'
+  | 'LeftHand'
+  | 'RightShoulder'
+  | 'RightArm'
+  | 'RightForeArm'
+  | 'RightHand'
+  | 'LeftUpLeg'
+  | 'LeftLeg'
+  | 'LeftFoot'
+  | 'RightUpLeg'
+  | 'RightLeg'
+  | 'RightFoot';
+
+export interface EulerRotationDeg {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export type PoseBoneRotations = Partial<Record<StandardBoneName, EulerRotationDeg>>;
+
+export interface ModelBoneInfo {
+  name: string;
+  standardName?: StandardBoneName;
+  parentName?: string;
+}
+
+export interface ModelSkeletonInfo {
+  hasSkeleton: boolean;
+  boneCount: number;
+  meshCount: number;
+  skinnedMeshCount: number;
+  formatName: string;
+  modelName: string;
+  mappedBonesCount: number;
+  bones: ModelBoneInfo[];
+  warningMessage?: string;
+}

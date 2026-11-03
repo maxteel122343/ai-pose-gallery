@@ -20,7 +20,7 @@ export const InfoDialog: React.FC<InfoDialogProps> = ({ type, onClose }) => {
   if (!type) return null;
 
   const isGuide = type === 'guide';
-  const title = isGuide ? 'How to use' : 'Terms of use';
+  const title = isGuide ? 'Como Usar o POSE Atlas 3D' : 'Termos de Uso e Licença';
 
   return (
     <div
@@ -35,7 +35,7 @@ export const InfoDialog: React.FC<InfoDialogProps> = ({ type, onClose }) => {
           <button
             className="info-close"
             type="button"
-            aria-label="Close"
+            aria-label="Fechar modal"
             onClick={onClose}
           >
             <svg
@@ -55,53 +55,46 @@ export const InfoDialog: React.FC<InfoDialogProps> = ({ type, onClose }) => {
           {isGuide ? (
             <ul>
               <li>
-                Load a reference image into your AI tool&apos;s{' '}
-                <strong>pose reference / composition reference</strong> feature (ControlNet,
-                IP-Adapter, or prompt &ldquo;change to this pose&rdquo;).
+                <strong>Biblioteca de Poses:</strong> Navegue pelas poses 2D na coluna esquerda.
+                Você pode filtrar por categoria (em pé, sentado, agachado, etc.), série ou ângulo de câmera.
               </li>
               <li>
-                Using several angles of the same pose keeps the pose consistent across generated
-                images or video.
+                <strong>Aplicação Automática no Modelo 3D:</strong> Ao clicar em qualquer pose ou no botão{' '}
+                <em>&ldquo;Aplicar&rdquo;</em>, o aplicativo estima e calcula as rotações articulares correspondentes (cabeça, tórax, braços, cotovelos, quadril, pernas e joelhos) e as aplica suavemente ao modelo 3D.
               </li>
               <li>
-                Click a card or thumbnail to open the viewer and download the{' '}
-                <strong>900 × 1200 full-size PNG</strong>.
+                <strong>Upload de Modelo Próprio (.GLB):</strong> Arraste e solte ou clique em{' '}
+                <em>&ldquo;Subir Modelo .GLB&rdquo;</em> para carregar seu próprio personagem 3D com esqueleto (compatível com Mixamo, Blender Rigify, VRM ou esqueletos padrão).
               </li>
               <li>
-                Images are faceless gray mannequin line drawings with no face, clothing or
-                background. Add those with your prompt or other references.
+                <strong>Controle Manual & Gizmo 3D:</strong> Selecione qualquer osso no painel direito ou ative o{' '}
+                <em>&ldquo;Gizmo 3D&rdquo;</em> para rotacionar as articulações interativamente no espaço 3D.
               </li>
               <li>
-                On desktop use <strong>← / →</strong> to switch angle and{' '}
-                <strong>↑ / ↓</strong> to switch pose. On mobile, swipe the image left or right.
+                <strong>Exportação:</strong> Quando estiver satisfeito com a pose, clique em{' '}
+                <em>&ldquo;Exportar .GLB&rdquo;</em> para baixar o arquivo 3D com a pose congelada.
               </li>
             </ul>
           ) : (
             <>
               <ul>
                 <li>
-                  The original author allows free use in your own work, including commercial work,
-                  editing and pose reference.
+                  As imagens de referência e poses originais são de autoria de <strong>ギア (@giaaibusi)</strong>{' '}
+                  e compiladas pelo repositório comunitário de <strong>Anhao</strong>.
                 </li>
                 <li>
-                  <strong>
-                    Redistributing, reposting or reselling the image data itself (original or
-                    edited) is prohibited.
-                  </strong>
+                  O uso para referência de desenho, arte e geração com IA é livre para fins pessoais e comerciais.
                 </li>
                 <li>
-                  Credit is not required (optional). Image metadata has been removed and assets are
-                  provided without warranty.
+                  É proibida a revenda isolada do banco de dados de imagens sem modificação.
                 </li>
-                <li>The figures are mannequin line drawings, not real people.</li>
                 <li>
-                  Do not use them in connection with real people, minors, or anything contrary to
-                  public order and morals.
+                  Todo o processamento de Three.js e retargeting é executado 100% no navegador do usuário,
+                  sem envio de modelos ou dados para servidores externos.
                 </li>
               </ul>
               <div className="info-note">
-                This is an English summary of the original site&apos;s terms. The original
-                author&apos;s published terms take precedence.
+                Dica: Para melhores resultados com modelos próprios, certifique-se de que o modelo exportado em .glb contenha skinned meshes ou armature com ossos nomeados.
               </div>
             </>
           )}
