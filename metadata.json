@@ -1,0 +1,6 @@
+{
+  "name": "POSE Atlas",
+  "description": "AI Pose Reference Gallery with 288 poses and 1,439 multi-angle references for AI art, composition, and posing reference.",
+  "permissions": [],
+  "capabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
