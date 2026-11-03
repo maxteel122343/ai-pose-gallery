@@ -117,6 +117,78 @@ export const BONE_LABELS: Record<StandardBoneName, string> = {
   RightFoot: 'Pé Direito (R Foot)',
 };
 
+export const ALL_STANDARD_BONES: StandardBoneName[] = [
+  'Head',
+  'Neck',
+  'Chest',
+  'Spine',
+  'Hips',
+  'LeftShoulder',
+  'LeftArm',
+  'LeftForeArm',
+  'LeftHand',
+  'RightShoulder',
+  'RightArm',
+  'RightForeArm',
+  'RightHand',
+  'LeftUpLeg',
+  'LeftLeg',
+  'LeftFoot',
+  'RightUpLeg',
+  'RightLeg',
+  'RightFoot',
+];
+
+export const BONE_SHORT_LABELS: Record<StandardBoneName, string> = {
+  Head: 'Cabeça',
+  Neck: 'Pescoço',
+  Chest: 'Peito / Tórax',
+  Spine: 'Coluna',
+  Hips: 'Quadril',
+  LeftShoulder: 'Ombro Esq',
+  LeftArm: 'Braço Esq',
+  LeftForeArm: 'Antebraço Esq',
+  LeftHand: 'Mão Esq',
+  RightShoulder: 'Ombro Dir',
+  RightArm: 'Braço Dir',
+  RightForeArm: 'Antebraço Dir',
+  RightHand: 'Mão Dir',
+  LeftUpLeg: 'Coxa Esq',
+  LeftLeg: 'Joelho / Canela Esq',
+  LeftFoot: 'Pé Esq',
+  RightUpLeg: 'Coxa Dir',
+  RightLeg: 'Joelho / Canela Dir',
+  RightFoot: 'Pé Dir',
+};
+
+export interface BoneGroupSection {
+  name: string;
+  bones: StandardBoneName[];
+}
+
+export const ANATOMICAL_BONE_GROUPS: BoneGroupSection[] = [
+  {
+    name: 'Cabeça & Tronco',
+    bones: ['Head', 'Neck', 'Chest', 'Spine', 'Hips'],
+  },
+  {
+    name: 'Braço Esquerdo',
+    bones: ['LeftShoulder', 'LeftArm', 'LeftForeArm', 'LeftHand'],
+  },
+  {
+    name: 'Braço Direito',
+    bones: ['RightShoulder', 'RightArm', 'RightForeArm', 'RightHand'],
+  },
+  {
+    name: 'Perna Esquerda',
+    bones: ['LeftUpLeg', 'LeftLeg', 'LeftFoot'],
+  },
+  {
+    name: 'Perna Direita',
+    bones: ['RightUpLeg', 'RightLeg', 'RightFoot'],
+  },
+];
+
 /**
  * Identify standard bone name from raw bone name
  */

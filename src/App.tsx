@@ -53,6 +53,20 @@ export const App: React.FC = () => {
   const [showWireframe, setShowWireframe] = useState<boolean>(false);
   const [showGrid, setShowGrid] = useState<boolean>(true);
   const [useGizmo, setUseGizmo] = useState<boolean>(true);
+  const [showNumericalValues, setShowNumericalValues] = useState<boolean>(true);
+
+  // Gizmo visibility controls (Selected only by default)
+  const [visibleGizmoBones, setVisibleGizmoBones] = useState<Set<StandardBoneName>>(
+    () => new Set(['Head'])
+  );
+  const [gizmoMode, setGizmoMode] = useState<'selected' | 'all' | 'custom' | 'none'>('selected');
+  const [lastUpdatedRotation, setLastUpdatedRotation] = useState<{
+    bone: StandardBoneName;
+    x: number;
+    y: number;
+    z: number;
+    timestamp: number;
+  } | null>(null);
 
   // Layout toggles
   const [isLibraryCollapsed, setIsLibraryCollapsed] = useState<boolean>(false);
@@ -257,6 +271,86 @@ export const App: React.FC = () => {
     handleApplyPose(item);
   };
 
+  // Bone selection and gizmo auto-sync
+  const handleSelectBone = (name: StandardBoneName | null) => {
+    setSelectedBoneName(name);
+    if (name) {
+      if (gizmoMode === 'selected') {
+        setVisibleGizmoBones(new Set([name]));
+      } else if (!visibleGizmoBones.has(name) && gizmoMode !== 'none') {
+        setVisibleGizmoBones((prev) => {
+          const next = new Set(prev);
+          next.add(name);
+          return next;
+        });
+      }
+    }
+  };
+
+  const handleToggleBoneGizmo = (boneName: StandardBoneName) => {
+    setVisibleGizmoBones((prev) => {
+      const next = new Set(prev);
+      if (next.has(boneName)) {
+        next.delete(boneName);
+      } else {
+        next.add(boneName);
+      }
+      return next;
+    });
+    setGizmoMode('custom');
+  };
+
+  const handleSetAllGizmosVisible = (visible: boolean) => {
+    if (visible) {
+      const allBones: StandardBoneName[] = [
+        'Head',
+        'Neck',
+        'Chest',
+        'Spine',
+        'Hips',
+        'LeftShoulder',
+        'LeftArm',
+        'LeftForeArm',
+        'LeftHand',
+        'RightShoulder',
+        'RightArm',
+        'RightForeArm',
+        'RightHand',
+        'LeftUpLeg',
+        'LeftLeg',
+        'LeftFoot',
+        'RightUpLeg',
+        'RightLeg',
+        'RightFoot',
+      ];
+      setVisibleGizmoBones(new Set(allBones));
+      setGizmoMode('all');
+    } else {
+      setVisibleGizmoBones(new Set());
+      setGizmoMode('none');
+    }
+  };
+
+  const handleSetSelectedOnlyGizmo = () => {
+    setGizmoMode('selected');
+    if (selectedBoneName) {
+      setVisibleGizmoBones(new Set([selectedBoneName]));
+    } else {
+      setVisibleGizmoBones(new Set(['Head']));
+    }
+  };
+
+  const handleBoneRotationFromGizmo = (
+    boneName: StandardBoneName,
+    rotDeg: { x: number; y: number; z: number }
+  ) => {
+    setLastUpdatedRotation({
+      bone: boneName,
+      ...rotDeg,
+      timestamp: Date.now(),
+    });
+  };
+
   return (
     <div className="app-layout">
       {/* App Header */}
@@ -299,7 +393,9 @@ export const App: React.FC = () => {
           <Viewport3D
             onRigReady={handleRigReady}
             selectedBoneName={selectedBoneName}
-            onSelectBone={setSelectedBoneName}
+            onSelectBone={handleSelectBone}
+            visibleGizmoBones={visibleGizmoBones}
+            onToggleBoneGizmo={handleToggleBoneGizmo}
             showSkeletonHelper={showSkeletonHelper}
             onToggleSkeletonHelper={() => setShowSkeletonHelper(!showSkeletonHelper)}
             showWireframe={showWireframe}
@@ -308,6 +404,9 @@ export const App: React.FC = () => {
             onToggleGrid={() => setShowGrid(!showGrid)}
             useGizmo={useGizmo}
             onToggleGizmo={() => setUseGizmo(!useGizmo)}
+            showNumericalValues={showNumericalValues}
+            onToggleNumericalValues={() => setShowNumericalValues((prev) => !prev)}
+            onBoneRotationChange={handleBoneRotationFromGizmo}
           />
 
           {/* Reference Image Comparison Card */}
@@ -331,7 +430,12 @@ export const App: React.FC = () => {
           rig={currentRig}
           modelInfo={modelInfo}
           selectedBoneName={selectedBoneName}
-          onSelectBone={setSelectedBoneName}
+          onSelectBone={handleSelectBone}
+          visibleGizmoBones={visibleGizmoBones}
+          onToggleBoneGizmo={handleToggleBoneGizmo}
+          onSetAllGizmosVisible={handleSetAllGizmosVisible}
+          onSetSelectedOnlyGizmo={handleSetSelectedOnlyGizmo}
+          gizmoMode={gizmoMode}
           showSkeletonHelper={showSkeletonHelper}
           onToggleSkeletonHelper={() => setShowSkeletonHelper(!showSkeletonHelper)}
           showWireframe={showWireframe}
@@ -340,7 +444,10 @@ export const App: React.FC = () => {
           onToggleGrid={() => setShowGrid(!showGrid)}
           useGizmo={useGizmo}
           onToggleGizmo={() => setUseGizmo(!useGizmo)}
+          showNumericalValues={showNumericalValues}
+          onToggleNumericalValues={() => setShowNumericalValues((prev) => !prev)}
           onResetPose={handleResetPose}
+          lastUpdatedRotation={lastUpdatedRotation}
         />
       </div>
 

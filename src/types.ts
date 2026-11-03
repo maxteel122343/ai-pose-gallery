@@ -83,3 +83,5 @@ export interface ModelSkeletonInfo {
   bones: ModelBoneInfo[];
   warningMessage?: string;
 }
+
+export type GizmoVisibilityMode = 'selected' | 'all' | 'none' | 'custom';
